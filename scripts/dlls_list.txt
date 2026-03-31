@@ -1,39 +1,62 @@
-System Informer 3.2.2103
+﻿System Informer 3.2.2103
 Windows NT 10.0 (64-bit)
-2:41:59 PM 12/13/2025
+1:23:43 CH 31/03/2026
 
 Name				Base address	Size	Description					
-suterusu.exe			0x7ff74c2e0000	524 kB							
-  gdi32.dll			0x7ffb5e5d0000	168 kB	GDI Client DLL					
-    gdi32full.dll		0x7ffb5d2d0000	1.13 MB	GDI Client DLL					
-      msvcp_win.dll		0x7ffb5d400000	652 kB	Microsoft® C Runtime Library			
-        ucrtbase.dll		0x7ffb5cdd0000	1.29 MB	Microsoft® C Runtime Library			
-      user32.dll		0x7ffb5e3e0000	1.76 MB	Multi-User Windows USER API Client DLL		
-    win32u.dll			0x7ffb5d750000	156 kB	Win32u						
-  libbrowser_injector.dll	0x7ffb40890000	820 kB							
-    ws2_32.dll			0x7ffb5eee0000	464 kB	Windows Socket 2.0 32-Bit DLL			
-      rpcrt4.dll		0x7ffb5d970000	1.09 MB	Remote Procedure Call Runtime			
-  libcurl-4.dll			0x7ffb3a6b0000	880 kB							
-    advapi32.dll		0x7ffb5ecd0000	712 kB	Advanced Windows 32 Base API			
-      cryptbase.dll		0x7ffb5c580000	48 kB	Base cryptographic API DLL			
-        bcryptprimitives.dll	0x7ffb5d4b0000	612 kB	Windows Cryptographic Primitives Library	
-      msvcrt.dll		0x7ffb5f8d0000	676 kB	Windows NT CRT DLL				
-      sechost.dll		0x7ffb5e2e0000	668 kB	Host for SCM/SDDL/LSA Lookup APIs		
-    bcrypt.dll			0x7ffb5c730000	152 kB	Windows Cryptographic Primitives Library	
-    crypt32.dll			0x7ffb5d550000	1.46 MB	Crypto API32					
-    libssh2-1.dll		0x7ffb42bc0000	328 kB	libssh2 Shared Library				
-      libcrypto-3-x64.dll	0x7ffad25b0000	5.57 MB	OpenSSL library					
-    libzstd.dll			0x7ffb395b0000	1.16 MB							
-    normaliz.dll		0x7ffb5f1c0000	32 kB	Unicode Normalization DLL			
-    Wldap32.dll			0x7ffb5db70000	456 kB	Win32 LDAP API DLL				
-    zlib1.dll			0x7ffb55d50000	124 kB							
-  libgcc_s_seh-1.dll		0x7ffb43e50000	172 kB							
-    libwinpthread-1.dll		0x7ffb55f90000	84 kB	POSIX WinThreads for Windows			
-  libstdc++-6.dll		0x7ffae6530000	2.36 MB							
-imm32.dll			0x7ffb5d840000	188 kB	Multi-User Windows IMM32 API Client DLL		
-IPHLPAPI.DLL			0x7ffb5b7f0000	200 kB	IP Helper API					
-kernel32.dll			0x7ffb5ec00000	796 kB	Windows NT BASE API Client DLL			
-  KernelBase.dll		0x7ffb5cf20000	3.63 MB	Windows NT BASE API Client DLL			
-ntdll.dll			0x7ffb5f9c0000	2.39 MB	NT Layer DLL					
-secur32.dll			0x7ffb44b80000	52 kB	Security Support Provider Interface		
-  sspicli.dll			0x7ffb5bfa0000	288 kB	Security Support Provider Interface		
+suterusu.exe			0x7ff6acff0000	296 kB							
+  gdi32.dll			0x7ffcd3c20000	172 kB	GDI Client DLL					
+    win32u.dll			0x7ffcd2100000	156 kB	Win32u						
+    gdi32full.dll		0x7ffcd27f0000	1,17 MB	GDI Client DLL					
+      msvcp_win.dll		0x7ffcd1ed0000	652 kB	Microsoft® C Runtime Library			
+      user32.dll		0x7ffcd29a0000	1,78 MB	Multi-User Windows USER API Client DLL		
+  libgcc_s_seh-1.dll		0x7ffccc4b0000	172 kB							
+    ucrtbase.dll		0x7ffcd1d80000	1,29 MB	Microsoft® C Runtime Library			
+    libwinpthread-1.dll		0x7ffcbdb00000	84 kB	POSIX WinThreads for Windows			
+  libstdc++-6.dll		0x7ffc54260000	2,36 MB							
+  libbrowser_injector.dll	0x7ffc73a70000	832 kB							
+    ws2_32.dll			0x7ffcd45a0000	464 kB	Windows Socket 2.0 32-Bit DLL			
+      rpcrt4.dll		0x7ffcd2c70000	1,09 MB	Remote Procedure Call Runtime			
+  libcurl-4.dll			0x7ffc71630000	880 kB							
+    advapi32.dll		0x7ffcd32f0000	720 kB	Advanced Windows 32 Base API			
+      msvcrt.dll		0x7ffcd3a70000	676 kB	Windows NT CRT DLL				
+      sechost.dll		0x7ffcd4a90000	664 kB	Host for SCM/SDDL/LSA Lookup APIs		
+      cryptbase.dll		0x7ffcd11f0000	48 kB	Base cryptographic API DLL			
+        bcryptprimitives.dll	0x7ffcd1cd0000	660 kB	Windows Cryptographic Primitives Library	
+    crypt32.dll			0x7ffcd1f80000	1,46 MB	Crypto API32					
+    bcrypt.dll			0x7ffcd1bc0000	168 kB	Windows Cryptographic Primitives Library	
+    normaliz.dll		0x7ffcd49c0000	32 kB	Unicode Normalization DLL			
+    Wldap32.dll			0x7ffcd4a10000	468 kB	Win32 LDAP API DLL				
+    libssh.dll			0x7ffc715a0000	548 kB							
+      shell32.dll		0x7ffcd3cf0000	7,31 MB	Windows Shell Common Dll			
+        WinTypes.dll		0x7ffcd21c0000	1,42 MB	Windows Base Types DLL				
+          combase.dll		0x7ffcd4620000	3,54 MB	Microsoft COM for Windows			
+      IPHLPAPI.DLL		0x7ffcd0480000	208 kB	IP Helper API					
+      libcrypto-3-x64.dll	0x7ffc24b60000	5,57 MB	OpenSSL library					
+    librtmp-1.dll		0x7ffcbdab0000	132 kB							
+      libgmp-10.dll		0x7ffc5f8c0000	692 kB							
+      libgnutls-30.dll		0x7ffc25100000	2,11 MB							
+        libbrotlienc.dll	0x7ffc534f0000	796 kB							
+        libidn2-0.dll		0x7ffc71550000	268 kB							
+          libiconv-2.dll	0x7ffc24810000	1,12 MB	LGPLed libiconv for Windows			
+        libintl-8.dll		0x7ffc53490000	324 kB	LGPLed libintl for Windows			
+        ncrypt.dll		0x7ffcd14e0000	192 kB	Windows NCrypt Router				
+          ntasn1.dll		0x7ffcd1490000	252 kB	Microsoft ASN.1 API				
+        libp11-kit-0.dll	0x7ffc3eb90000	1,42 MB							
+          libffi-8.dll		0x7ffcbdaa0000	64 kB							
+        libtasn1-6.dll		0x7ffc73a40000	132 kB							
+        libunistring-5.dll	0x7ffc24930000	2,15 MB	LGPLed libunistring for Windows			
+      libnettle-8.dll		0x7ffc947a0000	360 kB							
+      libhogweed-6.dll		0x7ffcb1fc0000	300 kB							
+      winmm.dll			0x7ffcc3c30000	212 kB	MCI API DLL					
+    zlib1.dll			0x7ffcb93d0000	124 kB							
+    libbrotlidec.dll		0x7ffcb93f0000	88 kB							
+      libbrotlicommon.dll	0x7ffcb59b0000	172 kB							
+    libzstd.dll			0x7ffc54130000	1,16 MB							
+ntdll.dll			0x7ffcd4b80000	2,41 MB	NT Layer DLL					
+kernel32.dll			0x7ffcd2db0000	804 kB	Windows NT BASE API Client DLL			
+  KernelBase.dll		0x7ffcd23f0000	3,97 MB	Windows NT BASE API Client DLL			
+imm32.dll			0x7ffcd49d0000	196 kB	Multi-User Windows IMM32 API Client DLL		
+secur32.dll			0x7ffccdde0000	52 kB	Security Support Provider Interface		
+  sspicli.dll			0x7ffcd0cf0000	292 kB	Security Support Provider Interface		
+kernel.appcore.dll		0x7ffcd0a50000	108 kB	AppModel API Host				
+mswsock.dll			0x7ffcd0fa0000	428 kB	Microsoft Windows Sockets 2.0 Service Provider	
