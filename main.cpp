@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <queue>
+#include <vector>
+#include <cstdlib>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 #include "overlay.h"
@@ -26,7 +28,6 @@ std::queue<std::string> responseQueue;
 std::mutex responseMutex;
 std::atomic<int> activeThreads(0);
 std::atomic<bool> programRunning(true);
-std::mutex threadMutex;
 json chatHistory = json::array();
 std::mutex historyMutex;
 std::string API_URL;
@@ -597,7 +598,6 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
             {
                 std::cout << "Failed to update clipboard." << std::endl;
             }
-            responseReady = false;
         }
         else
         {
@@ -774,11 +774,6 @@ int main(int argc, char *argv[])
             DispatchMessage(&msg);
         }
         Sleep(10);
-    }
-    {
-        std::lock_guard<std::mutex> lock(threadMutex);
-        if (apiThread.joinable())
-            apiThread.join();
     }
     while (activeThreads > 0)
         Sleep(100);
