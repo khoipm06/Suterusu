@@ -1,6 +1,22 @@
 {
   "api_url": "http://localhost:8080/v1/chat/completions",
   "api_key": "",
-  "model": "gpt-3.5-turbo",
-  "flash_window": "Chrome"
+  "ai": {
+    "model": "gpt-3.5-turbo",
+    "fallback_models": [],
+    "providers": []
+  },
+  "flash_window": "Chrome",
+  
+  "browser_ai": {
+    "chatgpt": {
+      "port": "8265",
+      "url_pattern": "chatgpt\\.com",
+      "script": "js/gpt.js",
+      "function": "askGPT",
+      "browser": "",
+      "profile": "",
+      "start_url": "https://chatgpt.com"
+    }
+  }
 }

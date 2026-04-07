@@ -6,6 +6,7 @@
         const existing = document.getElementById(id);
         if (existing) {
             existing.remove();
+            console.log('[Suterusu] Text selection enabled');
         } else {
             const style = document.createElement('style');
             style.id = id;
@@ -15,13 +16,17 @@
                 color: inherit !important;
             }`;
             (document.head || document.documentElement).appendChild(style);
+            console.log('[Suterusu] Text selection hidden');
         }
     }
     
-    // Run immediately if DOM is ready, otherwise wait
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', toggleSelection);
-    } else {
-        toggleSelection();
-    }
+    // Listen for F9 key which is safe because no browser uses it by default
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'F9') {
+            e.preventDefault();
+            toggleSelection();
+        }
+    });
+    
+    console.log('[Suterusu] Toggle selection script loaded (Press F9)');
 })();

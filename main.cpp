@@ -19,7 +19,20 @@ using json = nlohmann::json;
 // CDP injector DLL functions
 extern "C" __declspec(dllimport) bool InitializeCDP();
 extern "C" __declspec(dllimport) void ShutdownCDP();
-extern "C" __declspec(dllimport) bool InjectJavaScript(const char* filename);
+extern "C" __declspec(dllimport) bool ReconnectCDP();
+extern "C" __declspec(dllimport) bool InjectJavaScript(const char *filename);
+
+// Browser AI Session functions
+extern "C" __declspec(dllimport) bool SessionsLoadConfig(const char *config_path);
+extern "C" __declspec(dllimport) bool SessionLaunch(const char *name);
+extern "C" __declspec(dllimport) bool SessionStart(const char *name);
+extern "C" __declspec(dllimport) bool SessionReconnect(const char *name);
+extern "C" __declspec(dllimport) bool SessionInjectScript(const char *name);
+extern "C" __declspec(dllimport) bool SessionSend(const char *name, const char *prompt,
+                                                  char *result_buffer, int buffer_size,
+                                                  const char *extract_tag);
+extern "C" __declspec(dllimport) void SessionEnd(const char *name);
+extern "C" __declspec(dllimport) void SessionsShutdownAll();
 
 HHOOK hKeyboardHook;
 std::queue<std::string> responseQueue;
@@ -33,7 +46,7 @@ std::string API_URL;
 std::string API_KEY;
 std::string MODEL;
 std::vector<std::string> FALLBACK_MODELS; // Array of fallback models for automatic failover
-std::vector<std::string> AI_PROVIDERS; // Array of provider names for OpenRouter routing
+std::vector<std::string> AI_PROVIDERS;    // Array of provider names for OpenRouter routing
 std::string SYSTEM_PROMPT;
 std::string FLASH_WINDOW = "Chrome";
 
@@ -49,7 +62,7 @@ BOOL WINAPI ConsoleHandler(DWORD signal)
         programRunning = false;
         Sleep(100);
         UnhookWindowsHookEx(hKeyboardHook);
-        
+
         // Clean up persistent CURL handle
         if (persistentCurl)
         {
@@ -91,19 +104,19 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
     // Skip invisible windows early
     if (!IsWindowVisible(hwnd))
         return TRUE;
-    
+
     // Get process ID from window handle
     DWORD processId = 0;
     GetWindowThreadProcessId(hwnd, &processId);
-    
+
     if (processId == 0)
         return TRUE;
-    
+
     // Open process with query permissions
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
     if (hProcess == NULL)
         return TRUE;
-    
+
     // Get executable path
     char exePath[MAX_PATH];
     DWORD size = MAX_PATH;
@@ -113,20 +126,20 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
         return TRUE;
     }
     CloseHandle(hProcess);
-    
+
     // Extract executable name from full path
     std::string fullPath = exePath;
     size_t lastSlash = fullPath.find_last_of("\\/");
     std::string exeName = (lastSlash != std::string::npos) ? fullPath.substr(lastSlash + 1) : fullPath;
-    
+
     // Convert to lowercase for case-insensitive comparison
     std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
-    
+
     std::string target = FLASH_WINDOW;
     std::transform(target.begin(), target.end(), target.begin(), ::tolower);
-    
+
     bool shouldFlash = false;
-    
+
     // Special cases
     if (target == "all")
     {
@@ -142,14 +155,14 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
         std::string targetWithExt = target;
         if (target.find(".exe") == std::string::npos)
             targetWithExt += ".exe";
-        
+
         if (exeName == targetWithExt || exeName == target)
             shouldFlash = true;
         // Also support partial matching (e.g., "chrome" matches "chrome.exe")
         else if (exeName.find(target) != std::string::npos)
             shouldFlash = true;
     }
-    
+
     if (shouldFlash)
     {
         char windowTitle[256];
@@ -158,7 +171,7 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
         FlashWindow(hwnd);
         return FALSE;
     }
-    
+
     return TRUE;
 }
 
@@ -171,11 +184,14 @@ void FlashConfiguredWindows()
 bool LoadConfig()
 {
     std::ifstream promptFile("system_prompt.md");
-    if (promptFile.is_open()) {
+    if (promptFile.is_open())
+    {
         std::stringstream buffer;
         buffer << promptFile.rdbuf();
         SYSTEM_PROMPT = buffer.str();
-    } else {
+    }
+    else
+    {
         SYSTEM_PROMPT = "You are a helpful assistant.";
     }
     std::ifstream configFile("config.json");
@@ -185,13 +201,8 @@ bool LoadConfig()
         json defaultConfig = {
             {"api_url", "http://localhost:8080/v1/chat/completions"},
             {"api_key", ""},
-            {"ai", {
-                {"model", "openai/gpt-3.5-turbo"},
-                {"fallback_models", json::array()},
-                {"providers", json::array()}
-            }},
-            {"flash_window", "Chrome"}
-        };
+            {"ai", {{"model", "openai/gpt-3.5-turbo"}, {"fallback_models", json::array()}, {"providers", json::array()}}},
+            {"flash_window", "Chrome"}};
         std::ofstream outFile("config.json");
         if (outFile.is_open())
             outFile << defaultConfig.dump(2) << std::endl;
@@ -208,14 +219,14 @@ bool LoadConfig()
         API_URL = config.value("api_url", "");
         API_KEY = config.value("api_key", "");
         FLASH_WINDOW = config.value("flash_window", "Chrome");
-        
+
         // Parse ai section
         if (!config.contains("ai"))
         {
             std::cerr << "Error: config.json missing 'ai' section" << std::endl;
             return false;
         }
-        
+
         json aiConfig = config["ai"];
         if (!aiConfig.contains("model") || aiConfig["model"].get<std::string>().empty())
         {
@@ -223,11 +234,11 @@ bool LoadConfig()
             return false;
         }
         MODEL = aiConfig["model"];
-        
+
         // Parse fallback_models array (optional)
         if (aiConfig.contains("fallback_models") && aiConfig["fallback_models"].is_array())
         {
-            for (const auto& fallbackModel : aiConfig["fallback_models"])
+            for (const auto &fallbackModel : aiConfig["fallback_models"])
             {
                 if (fallbackModel.is_string())
                     FALLBACK_MODELS.push_back(fallbackModel.get<std::string>());
@@ -235,11 +246,11 @@ bool LoadConfig()
             if (!FALLBACK_MODELS.empty())
                 std::cout << "[DEBUG] Loaded " << FALLBACK_MODELS.size() << " fallback model(s)" << std::endl;
         }
-        
+
         // Parse providers array (optional)
         if (aiConfig.contains("providers") && aiConfig["providers"].is_array())
         {
-            for (const auto& provider : aiConfig["providers"])
+            for (const auto &provider : aiConfig["providers"])
             {
                 if (provider.is_string())
                     AI_PROVIDERS.push_back(provider.get<std::string>());
@@ -247,7 +258,7 @@ bool LoadConfig()
             if (!AI_PROVIDERS.empty())
                 std::cout << "[DEBUG] Loaded " << AI_PROVIDERS.size() << " provider routing preference(s)" << std::endl;
         }
-        
+
         if (API_URL.empty())
         {
             std::cerr << "Error: config.json missing 'api_url'" << std::endl;
@@ -260,6 +271,43 @@ bool LoadConfig()
         std::cerr << "Config error: " << e.what() << std::endl;
         return false;
     }
+}
+
+void LoadStartupScripts()
+{
+    std::cout << "[INFO] Loading startup scripts from js/startup/..." << std::endl;
+
+    WIN32_FIND_DATAA findData;
+    HANDLE hFind = FindFirstFileA("js\\startup\\*.js", &findData);
+
+    if (hFind == INVALID_HANDLE_VALUE)
+    {
+        std::cout << "[WARN] No startup scripts found in js/startup. Skipping loading." << std::endl;
+        return;
+    }
+
+    int loaded = 0;
+    do
+    {
+        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        {
+            std::string filePath = "js\\startup\\";
+            filePath += findData.cFileName;
+
+            std::cout << "[INFO] Loading: " << findData.cFileName << std::endl;
+            if (InjectJavaScript(filePath.c_str()))
+            {
+                loaded++;
+            }
+            else
+            {
+                std::cerr << "[ERROR] Failed to load: " << findData.cFileName << std::endl;
+            }
+        }
+    } while (FindNextFileA(hFind, &findData));
+
+    FindClose(hFind);
+    std::cout << "[INFO] Loaded " << loaded << " startup script(s)" << std::endl;
 }
 
 size_t WriteCallback(void *contents, size_t size, size_t nmemb, std::string *userp)
@@ -335,45 +383,45 @@ bool SetClipboardText(const std::string &text)
 void InitializeCurl()
 {
     std::lock_guard<std::mutex> curlLock(curlMutex);
-    
+
     if (persistentCurl)
         return; // Already initialized
-    
+
     persistentCurl = curl_easy_init();
     if (!persistentCurl)
     {
         std::cerr << "[ERROR] Failed to initialize CURL handle" << std::endl;
         return;
     }
-    
+
     // LOW LATENCY OPTIMIZATIONS - Set once for the persistent handle
-    
+
     // Enable HTTP/2 if available (multiplexing, better performance)
     curl_easy_setopt(persistentCurl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
-    
+
     // Disable Nagle's algorithm for lower latency (send small packets immediately)
     curl_easy_setopt(persistentCurl, CURLOPT_TCP_NODELAY, 1L);
-    
+
     // Enable connection reuse and pooling
     curl_easy_setopt(persistentCurl, CURLOPT_MAXCONNECTS, 5L);
-    
+
     // Enable TCP keep-alive to maintain connections
     curl_easy_setopt(persistentCurl, CURLOPT_TCP_KEEPALIVE, 1L);
     curl_easy_setopt(persistentCurl, CURLOPT_TCP_KEEPIDLE, 60L);
     curl_easy_setopt(persistentCurl, CURLOPT_TCP_KEEPINTVL, 60L);
-    
+
     // Set reduced connection timeout (5 seconds instead of 30)
     curl_easy_setopt(persistentCurl, CURLOPT_CONNECTTIMEOUT, 5L);
-    
+
     // Set reasonable total timeout
     curl_easy_setopt(persistentCurl, CURLOPT_TIMEOUT, 120L);
-    
+
     // Required for multi-threaded applications
     curl_easy_setopt(persistentCurl, CURLOPT_NOSIGNAL, 1L);
-    
+
     // Enable DNS caching
     curl_easy_setopt(persistentCurl, CURLOPT_DNS_CACHE_TIMEOUT, 600L);
-    
+
     // Use HTTP pipelining for better performance
     curl_easy_setopt(persistentCurl, CURLOPT_PIPEWAIT, 1L);
 
@@ -385,44 +433,46 @@ void InitializeCurl()
 }
 
 // Extract content between specified tags
-std::string ExtractTag(const std::string& text, const std::string& tag) {
+std::string ExtractTag(const std::string &text, const std::string &tag)
+{
     std::string openTag = "<" + tag + ">";
     std::string closeTag = "</" + tag + ">";
-    
+
     size_t startPos = text.find(openTag);
     size_t endPos = text.find(closeTag);
 
     // If both open and close tags are found, extract content between them
-    if (startPos != std::string::npos && endPos != std::string::npos && endPos > startPos) {
+    if (startPos != std::string::npos && endPos != std::string::npos && endPos > startPos)
+    {
         startPos += openTag.length();
         return text.substr(startPos, endPos - startPos);
     }
-    
+
     // Fallback to return the whole text if tags are not found
-    return text; 
+    return text;
 }
 
 // Send text to OpenAI API
 std::string SendToAPI(const std::string &prompt)
 {
     std::lock_guard<std::mutex> curlLock(curlMutex);
-    
+
     if (!persistentCurl)
         return "Error: CURL not initialized";
-    
+
     std::string responseString;
     struct curl_slist *headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
-    
+
     // Enable HTTP keep-alive
     headers = curl_slist_append(headers, "Connection: keep-alive");
-    
+
     if (!API_KEY.empty())
     {
         std::string authHeader = "Authorization: Bearer " + API_KEY;
         headers = curl_slist_append(headers, authHeader.c_str());
     }
-    
+
     json messages = json::array();
     if (!SYSTEM_PROMPT.empty())
         messages.push_back({{"role", "system"}, {"content", SYSTEM_PROMPT}});
@@ -436,55 +486,53 @@ std::string SendToAPI(const std::string &prompt)
             messages.push_back(chatHistory[i]);
     }
     messages.push_back({{"role", "user"}, {"content", prompt}});
-    
+
     // Build payload with optional provider routing and model fallbacks
     json payload = {
-        {"model", MODEL}, 
-        {"messages", messages}, 
-        {"temperature", 0.7}
-    };
-    
+        {"model", MODEL},
+        {"messages", messages},
+        {"temperature", 0.7}};
+
     // Add model fallbacks if specified (for OpenRouter automatic failover)
     if (!FALLBACK_MODELS.empty())
     {
         // Build fallback models array
         json modelsArray = json::array();
-        for (const auto& fallbackModel : FALLBACK_MODELS)
+        for (const auto &fallbackModel : FALLBACK_MODELS)
         {
             modelsArray.push_back(fallbackModel);
         }
         payload["models"] = modelsArray;
         std::cout << "[DEBUG] Including model fallbacks: " << modelsArray.dump() << std::endl;
     }
-    
+
     // Add provider routing if providers are specified (for OpenRouter)
     if (!AI_PROVIDERS.empty())
     {
         payload["provider"] = {
             {"order", AI_PROVIDERS},
-            {"allow_fallbacks", true}
-        };
+            {"allow_fallbacks", true}};
         std::cout << "[DEBUG] Including provider routing: " << json(AI_PROVIDERS).dump() << std::endl;
     }
-    
+
     std::string jsonStr = payload.dump();
-    
+
     // Set request-specific options
     curl_easy_setopt(persistentCurl, CURLOPT_URL, API_URL.c_str());
     curl_easy_setopt(persistentCurl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(persistentCurl, CURLOPT_POSTFIELDS, jsonStr.c_str());
     curl_easy_setopt(persistentCurl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(persistentCurl, CURLOPT_WRITEDATA, &responseString);
-    
+
     CURLcode res = curl_easy_perform(persistentCurl);
     long response_code = 0;
     curl_easy_getinfo(persistentCurl, CURLINFO_RESPONSE_CODE, &response_code);
-    
+
     // Clean up headers
     curl_slist_free_all(headers);
-    
+
     // Don't cleanup the persistent handle - it will be reused
-    
+
     if (res != CURLE_OK)
     {
         if (res == CURLE_OPERATION_TIMEDOUT)
@@ -531,6 +579,21 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
     DWORD vk = ((KBDLLHOOKSTRUCT *)lParam)->vkCode;
     switch (vk)
     {
+    case VK_F4:
+        std::cout << "F4 pressed - Reconnecting to CDP and refreshing scripts..." << std::endl;
+        if (ReconnectCDP())
+        {
+            std::cout << "[CDP] Reconnected to new target" << std::endl;
+            LoadStartupScripts(); // Reinject all startup scripts
+            std::cout << "CDP scripts refreshed." << std::endl;
+            ShowOverlayIndicator(1000, IndicatorColor::Green);
+        }
+        else
+        {
+            std::cout << "[CDP] Failed to connect" << std::endl;
+            ShowOverlayIndicator(1000, IndicatorColor::Red);
+        }
+        break;
     case VK_F6:
     {
         std::lock_guard<std::mutex> lock(historyMutex);
@@ -549,10 +612,10 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         }
         // Show green indicator when clipboard read succeeds and sending to API
         ShowOverlayIndicator(700, IndicatorColor::Green);
-        
+
         // Launch thread for API request
         std::thread([clipboardText]()
-        {
+                    {
             activeThreads++;
             try
             {
@@ -560,7 +623,7 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 
                 // Add response to queue
                 {
-                std::lock_guard<std::mutex> lock(responseMutex);
+                    std::lock_guard<std::mutex> lock(responseMutex);
                     responseQueue.push(response);
                     std::cout << "Response queued. Press F8 to copy ("
                     << responseQueue.size() << " pending)." << std::endl;
@@ -572,8 +635,8 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
                 FlashConfiguredWindows();
             }
             catch (...) { std::cerr << "Error in API thread." << std::endl; }
-            activeThreads--;
-        }).detach();
+            activeThreads--; })
+            .detach();
         break;
     }
     case VK_F8:
@@ -583,21 +646,20 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         {
             std::string response = responseQueue.front();
             responseQueue.pop();
-            
+
             std::cout << "Popped oldest response from queue. " << responseQueue.size() << " response(s) remaining" << std::endl;
-            
+
             if (SetClipboardText(response))
             {
                 std::cout << "Clipboard updated." << std::endl;
                 // Show green indicator on successful clipboard update
-                const char* firstChar = response.empty() ? nullptr : response.c_str();
+                const char *firstChar = response.empty() ? nullptr : response.c_str();
                 ShowOverlayIndicator(1000, IndicatorColor::Green, firstChar);
             }
             else
             {
                 std::cout << "Failed to update clipboard." << std::endl;
             }
-            responseReady = false;
         }
         else
         {
@@ -607,19 +669,67 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         }
         break;
     }
-    case VK_F9:
+    case VK_F5:
     {
-        std::cout << "F9 pressed - Toggling Selection Highlighting..." << std::endl;
-        if (InjectJavaScript("js/toggle_selection.js"))
+        std::cout << "F5 pressed - Reloading browser AI sessions config..." << std::endl;
+        if (SessionsLoadConfig("config.json"))
         {
-            std::cout << "[DEBUG] JavaScript injection successful!" << std::endl;
+            std::cout << "Browser AI config reloaded successfully." << std::endl;
             ShowOverlayIndicator(1000, IndicatorColor::Green);
         }
         else
         {
-            std::cout << "[DEBUG] JavaScript injection failed!" << std::endl;
+            std::cout << "Failed to reload browser AI config." << std::endl;
             ShowOverlayIndicator(1000, IndicatorColor::Red);
         }
+        break;
+    }
+    case VK_F10:
+    {
+        std::cout << "F10 pressed - Sending to ChatGPT session..." << std::endl;
+        std::string clipboardText = GetClipboardText();
+        if (clipboardText.empty())
+        {
+            std::cout << "Clipboard empty." << std::endl;
+            break;
+        }
+
+        ShowOverlayIndicator(700, IndicatorColor::Green);
+
+        // Launch thread for session request
+        std::thread([clipboardText]()
+                    {
+            activeThreads++;
+            try
+            {
+                const int BUFFER_SIZE = 51200;
+                char* resultBuffer = new char[BUFFER_SIZE];
+                
+                if (SessionSend("chatgpt", clipboardText.c_str(), resultBuffer, BUFFER_SIZE, "answer")) {
+                    std::string response(resultBuffer);
+                    
+                    {
+                        std::lock_guard<std::mutex> lock(responseMutex);
+                        responseQueue.push(response);
+                        std::cout << "ChatGPT response queued. Press F8 to copy ("
+                        << responseQueue.size() << " pending)." << std::endl;
+                    }
+                    
+                    ShowOverlayIndicator(3000, IndicatorColor::Green);
+                    FlashConfiguredWindows();
+                } else {
+                    std::cerr << "Failed to get ChatGPT response" << std::endl;
+                    ShowOverlayIndicator(2000, IndicatorColor::Red);
+                }
+                
+                delete[] resultBuffer;
+            }
+            catch (...) { 
+                std::cerr << "Error in session thread." << std::endl;
+                ShowOverlayIndicator(2000, IndicatorColor::Red);
+            }
+            activeThreads--; })
+            .detach();
         break;
     }
     // Use F12 to quit the application to prevent accidental closure
@@ -634,8 +744,10 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 class ConsoleStreamBuf : public std::streambuf
 {
     HANDLE hConsole;
+
 public:
     ConsoleStreamBuf(HANDLE h) : hConsole(h) {}
+
 protected:
     virtual int_type overflow(int_type c) override
     {
@@ -733,24 +845,54 @@ int main(int argc, char *argv[])
     std::cout << "  Flash Window: " << FLASH_WINDOW << std::endl;
     std::cout << std::endl;
     std::cout << "Controls:" << std::endl;
+    std::cout << "  F4 - Refresh CDP scripts (reinject all startup scripts)" << std::endl;
+    std::cout << "  F5 - Reload browser AI sessions config" << std::endl;
     std::cout << "  F6 - Clear chat history" << std::endl;
     std::cout << "  F7 - Read clipboard and send to API" << std::endl;
     std::cout << "  F8 - Replace clipboard with API response" << std::endl;
-    std::cout << "  F9 - Toggle text selection" << std::endl;
+    std::cout << "  F9 - Toggle text selection (handled by JavaScript not keyboard hook)" << std::endl;
+    std::cout << "  F10 - Send clipboard to browser AI session (e.g., ChatGPT) *EXPERIMENTAL*" << std::endl;
     std::cout << "  F12 - Quit application" << std::endl;
     std::cout << std::endl;
-    
+    std::cout << "Note: Additional hotkeys may be defined in userscripts" << std::endl;
+    std::cout << std::endl;
+
     // Initialize CURL before showing ready message
     curl_global_init(CURL_GLOBAL_DEFAULT);
     InitializeCurl();
-    
-    // Initialize CDP connection (optional - will auto-initialize on first use)
+
+    // Initialize CDP connection FIRST (before loading scripts)
     std::cout << "Initializing Chrome DevTools connection..." << std::endl;
-    InitializeCDP();
-    
+    if (InitializeCDP())
+    {
+        std::cout << "[CDP] Connection established - ready for script injection" << std::endl;
+    }
+    else
+    {
+        std::cout << "[CDP] Warning: Connection failed - will retry when needed" << std::endl;
+    }
+
+    // Load and inject startup scripts (CDP must be initialized first)
+    LoadStartupScripts();
+
+    // Load browser AI sessions from config
+    std::cout << "Loading browser AI sessions from config.json..." << std::endl;
+    if (SessionsLoadConfig("config.json"))
+    {
+        // Try to start the ChatGPT session if configured
+        if (SessionStart("chatgpt"))
+        {
+            std::cout << "[Session:chatgpt] Connected and script injected - F10 ready" << std::endl;
+        }
+        else
+        {
+            std::cout << "[Session:chatgpt] Warning: Connection failed - F10 may not work" << std::endl;
+        }
+    }
+
     std::cout << "Waiting for key presses..." << std::endl;
     std::cout.flush();
-    
+
     hKeyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, nullptr, 0);
     if (hKeyboardHook == nullptr)
     {
@@ -774,18 +916,17 @@ int main(int argc, char *argv[])
         }
         Sleep(10);
     }
-    {
-        std::lock_guard<std::mutex> lock(threadMutex);
-        if (apiThread.joinable())
-            apiThread.join();
-    }
+
+    // Wait for all API threads to complete
+    std::cout << "[DEBUG] Waiting for " << activeThreads.load() << " active thread(s) to finish..." << std::endl;
     while (activeThreads > 0)
         Sleep(100);
     UnhookWindowsHookEx(hKeyboardHook);
-    
-    // Clean up CDP connection
+
+    // Clean up CDP connections
     ShutdownCDP();
-    
+    SessionsShutdownAll();
+
     // Clean up persistent CURL handle
     if (persistentCurl)
     {
