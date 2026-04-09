@@ -252,6 +252,13 @@ public:
         }
         
         try {
+            // Verify socket is still open before sending
+            if (!ws->next_layer().is_open()) {
+                std::cerr << "[CDP] Socket is closed\n";
+                connected = false;
+                return false;
+            }
+            
             json msg = {
                 {"id", message_id++},
                 {"method", method},
@@ -269,6 +276,12 @@ public:
         } catch (std::exception const& e) {
             std::cerr << "[CDP:" << debug_port << "] Send error: " << e.what() << "\n";
             connected = false;
+            // Try to close the socket gracefully
+            try {
+                if (ws && ws->next_layer().is_open()) {
+                    ws->next_layer().close();
+                }
+            } catch (...) {}
             return false;
         }
     }

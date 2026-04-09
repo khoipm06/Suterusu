@@ -39,7 +39,6 @@ std::queue<std::string> responseQueue;
 std::mutex responseMutex;
 std::atomic<int> activeThreads(0);
 std::atomic<bool> programRunning(true);
-std::mutex threadMutex;
 json chatHistory = json::array();
 std::mutex historyMutex;
 std::string API_URL;
