@@ -1,4 +1,16 @@
-window.askLLM = async function (promptText, platform) {
+window.askLLM = async function (promptText, platform = null) {
+  // Auto-detect platform if not provided
+  if (!platform) {
+    const host = window.location.hostname;
+    if (host.includes('chatgpt.com')) platform = 'chatgpt';
+    else if (host.includes('gemini.google.com')) platform = 'gemini';
+    else if (host.includes('claude.ai')) platform = 'claude';
+    else if (host.includes('grok.com')) platform = 'grok';
+    else if (host.includes('perplexity.ai')) platform = 'perplexity';
+    else if (host.includes('meta.ai')) platform = 'meta-ai';
+    else throw new Error("Platform could not be auto-detected from URL");
+  }
+
   // 1. DOM Configuration Profiles
   const CONFIG = {
     chatgpt: {

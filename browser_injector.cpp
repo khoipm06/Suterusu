@@ -13,6 +13,7 @@
 #include <mutex>
 #include <atomic>
 #include <map>
+#include <set>
 #include <vector>
 #include <regex>
 
@@ -43,35 +44,14 @@ private:
     std::string url_pattern;  // Regex pattern for target matching
     std::string connected_target_id;
     
-    // Helper: Escape string for JavaScript
-    static std::string EscapeJsString(const std::string& input) {
-        std::string escaped = input;
-        size_t pos = 0;
-        while ((pos = escaped.find("\\", pos)) != std::string::npos) {
-            escaped.replace(pos, 1, "\\\\");
-            pos += 2;
+    // Read file content helper
+    static std::string ReadFileContent(const std::string& script_path, const std::string& debug_port) {
+        std::ifstream file(script_path);
+        if (!file.is_open()) {
+            std::cerr << "[CDP:" << debug_port << "] Cannot open: " << script_path << "\n";
+            return "";
         }
-        pos = 0;
-        while ((pos = escaped.find("\"", pos)) != std::string::npos) {
-            escaped.replace(pos, 1, "\\\"");
-            pos += 2;
-        }
-        pos = 0;
-        while ((pos = escaped.find("\n", pos)) != std::string::npos) {
-            escaped.replace(pos, 1, "\\n");
-            pos += 2;
-        }
-        pos = 0;
-        while ((pos = escaped.find("\r", pos)) != std::string::npos) {
-            escaped.replace(pos, 1, "\\r");
-            pos += 2;
-        }
-        pos = 0;
-        while ((pos = escaped.find("\t", pos)) != std::string::npos) {
-            escaped.replace(pos, 1, "\\t");
-            pos += 2;
-        }
-        return escaped;
+        return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
     }
     
     // Query /json endpoint to get available targets
@@ -148,6 +128,7 @@ private:
     
     bool ConnectToWebSocket(const std::string& ws_url_full) {
         try {
+            // Here we assume che*ting on local machine, what is the purpose of remoting to other host, right?
             const char* host = "127.0.0.1";
             
             std::string ws_host = host;
@@ -291,15 +272,8 @@ public:
         if (!EnsureConnected()) return false;
         
         try {
-            std::ifstream jsFile(script_path);
-            if (!jsFile.is_open()) {
-                std::cerr << "[CDP:" << debug_port << "] Cannot open: " << script_path << "\n";
-                return false;
-            }
-            
-            std::string jsCode{std::istreambuf_iterator<char>(jsFile),
-                              std::istreambuf_iterator<char>()};
-            jsFile.close();
+            std::string jsCode = ReadFileContent(script_path, debug_port);
+            if (jsCode.empty()) return false;
             
             json eval_params = {
                 {"expression", jsCode},
@@ -326,15 +300,8 @@ public:
         if (!EnsureConnected()) return false;
         
         try {
-            std::ifstream jsFile(script_path);
-            if (!jsFile.is_open()) {
-                std::cerr << "[CDP:" << debug_port << "] Cannot open: " << script_path << "\n";
-                return false;
-            }
-            
-            std::string jsCode{std::istreambuf_iterator<char>(jsFile),
-                              std::istreambuf_iterator<char>()};
-            jsFile.close();
+            std::string jsCode = ReadFileContent(script_path, debug_port);
+            if (jsCode.empty()) return false;
             
             // Register for future page loads
             json params = {{"source", jsCode}};
@@ -366,8 +333,7 @@ public:
         if (!EnsureConnected()) return false;
         
         try {
-            std::string escapedText = EscapeJsString(text);
-            std::string jsCall = "window." + function_name + "(\"" + escapedText + "\")";
+            std::string jsCall = "window." + function_name + "(" + json(text).dump() + ")";
             
             json eval_params = {
                 {"expression", jsCall},
@@ -477,7 +443,7 @@ struct BrowserAIConfig {
     std::string port;           // Debug port (e.g., "8265")
     std::string url_pattern;    // Regex pattern to match tab URL
     std::string script_path;    // Path to JS file to inject
-    std::string function_name;  // JS function to call (e.g., "askGPT")
+    std::string function_name;  // JS function to call
     std::string browser_path;   // Optional: browser executable path
     std::string user_data_dir;  // Optional: user data directory for profile
     std::string start_url;      // Optional: URL to open on launch
@@ -498,7 +464,12 @@ public:
     
     const BrowserAIConfig& GetConfig() const { return config; }
     
-    bool Launch() {
+    bool Launch(std::set<std::string>& launched_ports) {
+        if (launched_ports.count(config.port)) {
+            std::cout << "[Session:" << config.name << "] Browser already launched for port " << config.port << "\n";
+            return true;
+        }
+
         if (config.browser_path.empty()) {
             std::cerr << "[Session:" << config.name << "] No browser path configured\n";
             return false;
@@ -532,6 +503,7 @@ public:
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
         
+        launched_ports.insert(config.port);
         std::cout << "[Session:" << config.name << "] Browser launched\n";
         return true;
     }
@@ -615,6 +587,7 @@ public:
 class BrowserAIManager {
 private:
     std::map<std::string, std::unique_ptr<BrowserAISession>> sessions;
+    std::set<std::string> launched_ports;
     std::mutex manager_mutex;
     
 public:
@@ -696,8 +669,18 @@ public:
         std::lock_guard<std::mutex> lock(manager_mutex);
         
         for (auto& [name, session] : sessions) {
-            session->Launch();
+            session->Launch(launched_ports);
         }
+    }
+    
+    bool LaunchSession(const std::string& name) {
+        std::lock_guard<std::mutex> lock(manager_mutex);
+        
+        auto it = sessions.find(name);
+        if (it != sessions.end()) {
+            return it->second->Launch(launched_ports);
+        }
+        return false;
     }
     
     void ShutdownAll() {
@@ -763,8 +746,7 @@ extern "C" __declspec(dllexport) bool SessionsLoadConfig(const char* config_path
 }
 
 extern "C" __declspec(dllexport) bool SessionLaunch(const char* name) {
-    auto* session = g_session_manager.GetSession(name);
-    return session ? session->Launch() : false;
+    return g_session_manager.LaunchSession(name);
 }
 
 extern "C" __declspec(dllexport) bool SessionStart(const char* name) {

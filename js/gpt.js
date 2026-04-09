@@ -1,3 +1,6 @@
+// This scrip is deprecated and will be removed in a future release.
+// It is recommended to use the new `webLLM.js`
+
 window.askGPT = async function(promptText) {
   const getMsgs = () =>
     document.querySelectorAll('div[data-message-author-role="assistant"]');
