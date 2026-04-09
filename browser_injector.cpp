@@ -453,6 +453,27 @@ struct BrowserAIConfig {
 // Browser AI Session - Wraps CDPConnection with config
 // ============================================================================
 
+static std::string GetChromePath() {
+    char buffer[MAX_PATH];
+    DWORD bufferSize = sizeof(buffer);
+
+    if (RegGetValueA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Classes\\ChromeHTML\\shell\\open\\command",
+                     nullptr, RRF_RT_REG_SZ, nullptr, buffer, &bufferSize) == ERROR_SUCCESS) {
+        std::string path(buffer);
+        // The registry key output looks like: "C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument %1
+        size_t exe_pos = path.find(".exe");
+        if (exe_pos != std::string::npos) {
+            path = path.substr(0, exe_pos + 4);
+            // Strip leading quote
+            if (!path.empty() && path[0] == '\"') {
+                path = path.substr(1);
+            }
+        }
+        return path;
+    }
+    return "";
+}
+
 class BrowserAISession {
 private:
     BrowserAIConfig config;
@@ -470,11 +491,30 @@ public:
             return true;
         }
 
-        if (config.browser_path.empty()) {
-            std::cerr << "[Session:" << config.name << "] No browser path configured\n";
+        if (!config.browser_path.empty()) {
+            std::cout << "[Session:" << config.name << "] Using configured Chrome path: "
+                    << config.browser_path << "\n";
+        } else {
+            std::cerr << "[Session:" << config.name << "] No browser path configured.\n";
+            std::string detected = GetChromePath();
+            if (!detected.empty()) {
+                config.browser_path = detected;
+                std::cout << "[Session:" << config.name << "] Using auto-detected Chrome path: "
+                        << config.browser_path << "\n";
+            } else {
+                config.browser_path = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+                std::cerr << "[Session:" << config.name << "] Failed to detect Chrome path.\n";
+                std::cout << "[Session:" << config.name << "] Defaulting to: "
+                        << config.browser_path << "\n";
+            }
+        }
+
+        if (!std::filesystem::exists(config.browser_path)) {
+            std::cerr << "[Session:" << config.name << "] Chrome path does not exist: "
+                    << config.browser_path << "\n";
             return false;
         }
-        
+
         std::string cmdLine = "\"" + config.browser_path + "\"";
         cmdLine += " --remote-debugging-port=" + config.port;
         
@@ -601,15 +641,15 @@ public:
                 return false;
             }
             
-            auto j = json::parse(file);
+            auto jsonFile = json::parse(file);
             
-            if (!j.contains("browser_ai")) {
+            if (!jsonFile.contains("browser_ai")) {
                 std::cout << "[BrowserAI] No browser_ai section in config\n";
                 return true;  // Not an error, just no sessions configured
             }
             
             // Shutdown existing sessions that are being reconfigured
-            for (auto& [name, cfg] : j["browser_ai"].items()) {
+            for (auto& [name, cfg] : jsonFile["browser_ai"].items()) {
                 auto it = sessions.find(name);
                 if (it != sessions.end()) {
                     it->second->Shutdown();
@@ -618,7 +658,7 @@ public:
             }
             
             // Load new configurations
-            for (auto& [name, cfg] : j["browser_ai"].items()) {
+            for (auto& [name, cfg] : jsonFile["browser_ai"].items()) {
                 BrowserAIConfig config;
                 config.name = name;
                 
@@ -741,17 +781,15 @@ extern "C" __declspec(dllexport) bool InjectJavaScript(const char* filename) {
 // Browser AI Session exports
 // ============================================================================
 
-extern "C" __declspec(dllexport) bool SessionsLoadConfig(const char* config_path) {
-    return g_session_manager.LoadConfig(config_path);
-}
-
-extern "C" __declspec(dllexport) bool SessionLaunch(const char* name) {
-    return g_session_manager.LaunchSession(name);
-}
-
-extern "C" __declspec(dllexport) bool SessionStart(const char* name) {
-    auto* session = g_session_manager.GetSession(name);
-    return session ? session->Connect() : false;
+extern "C" __declspec(dllexport) bool SessionStart(const char* config_path, const char* session_name = "") {
+    g_session_manager.LoadConfig(config_path);
+    if (!session_name || strlen(session_name) == 0) {
+        g_session_manager.LaunchAll();
+        return true;
+    } else {
+        return g_session_manager.LaunchSession(session_name);
+    }
+    return false;
 }
 
 extern "C" __declspec(dllexport) bool SessionReconnect(const char* name) {

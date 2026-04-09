@@ -23,9 +23,7 @@ extern "C" __declspec(dllimport) bool ReconnectCDP();
 extern "C" __declspec(dllimport) bool InjectJavaScript(const char *filename);
 
 // Browser AI Session functions
-extern "C" __declspec(dllimport) bool SessionsLoadConfig(const char *config_path);
-extern "C" __declspec(dllimport) bool SessionLaunch(const char *name);
-extern "C" __declspec(dllimport) bool SessionStart(const char *name);
+extern "C" __declspec(dllimport) bool SessionStart(const char *config_path, const char *session_name = "");
 extern "C" __declspec(dllimport) bool SessionReconnect(const char *name);
 extern "C" __declspec(dllimport) bool SessionInjectScript(const char *name);
 extern "C" __declspec(dllimport) bool SessionSend(const char *name, const char *prompt,
@@ -671,7 +669,7 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
     case VK_F5:
     {
         std::cout << "F5 pressed - Reloading browser AI sessions config..." << std::endl;
-        if (SessionsLoadConfig("config.json"))
+        if (SessionStart("config.json"))
         {
             std::cout << "Browser AI config reloaded successfully." << std::endl;
             ShowOverlayIndicator(1000, IndicatorColor::Green);
@@ -876,18 +874,8 @@ int main(int argc, char *argv[])
 
     // Load browser AI sessions from config
     std::cout << "Loading browser AI sessions from config.json..." << std::endl;
-    if (SessionsLoadConfig("config.json"))
-    {
-        // Try to start the ChatGPT session if configured
-        if (SessionStart("chatgpt"))
-        {
-            std::cout << "[Session:chatgpt] Connected and script injected - F10 ready" << std::endl;
-        }
-        else
-        {
-            std::cout << "[Session:chatgpt] Warning: Connection failed - F10 may not work" << std::endl;
-        }
-    }
+
+    SessionStart("config.json");
 
     std::cout << "Waiting for key presses..." << std::endl;
     std::cout.flush();
