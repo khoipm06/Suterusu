@@ -1,18 +1,18 @@
-#include <windows.h>
-#include <psapi.h>
-#include <iostream>
+#include "overlay.h"
+#include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <curl/curl.h>
 #include <fstream>
+#include <iostream>
+#include <mutex>
+#include <nlohmann/json.hpp>
+#include <psapi.h>
+#include <queue>
 #include <sstream>
 #include <string>
 #include <thread>
-#include <mutex>
-#include <atomic>
-#include <algorithm>
-#include <cstdio>
-#include <queue>
-#include <curl/curl.h>
-#include <nlohmann/json.hpp>
-#include "overlay.h"
+#include <windows.h>
 
 using json = nlohmann::json;
 
@@ -23,7 +23,8 @@ extern "C" __declspec(dllimport) bool ReconnectCDP();
 extern "C" __declspec(dllimport) bool InjectJavaScript(const char *filename);
 
 // Browser AI Session functions
-extern "C" __declspec(dllimport) bool SessionStart(const char *config_path, const char *session_name = "");
+extern "C" __declspec(dllimport) bool SessionStart(const char *config_path,
+                                                   const char *session_name = "");
 extern "C" __declspec(dllimport) bool SessionReconnect(const char *name);
 extern "C" __declspec(dllimport) bool SessionInjectScript(const char *name);
 extern "C" __declspec(dllimport) bool SessionSend(const char *name, const char *prompt,
@@ -51,18 +52,15 @@ std::string FLASH_WINDOW = "Chrome";
 CURL *persistentCurl = nullptr;
 std::mutex curlMutex;
 
-BOOL WINAPI ConsoleHandler(DWORD signal)
-{
-    if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT)
-    {
+BOOL WINAPI ConsoleHandler(DWORD signal) {
+    if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT) {
         std::cout << "\n[DEBUG] Console close signal received, cleaning up..." << std::endl;
         programRunning = false;
         Sleep(100);
         UnhookWindowsHookEx(hKeyboardHook);
 
         // Clean up persistent CURL handle
-        if (persistentCurl)
-        {
+        if (persistentCurl) {
             curl_easy_cleanup(persistentCurl);
             persistentCurl = nullptr;
         }
@@ -72,14 +70,14 @@ BOOL WINAPI ConsoleHandler(DWORD signal)
     return FALSE;
 }
 
-void ExitHandler()
-{
-    std::cout << "[DEBUG] Program is terminating! This should not happen during normal operation" << std::endl;
+void ExitHandler() {
+    std::cout << "[DEBUG] Program is terminating! This should not happen "
+                 "during normal operation"
+              << std::endl;
     std::cout.flush();
 }
 
-void FlashWindow(HWND hwnd)
-{
+void FlashWindow(HWND hwnd) {
     FLASHWINFO fwi;
     fwi.cbSize = sizeof(FLASHWINFO);
     fwi.hwnd = hwnd;
@@ -93,8 +91,7 @@ void FlashWindow(HWND hwnd)
     FlashWindowEx(&fwi);
 }
 
-BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
-{
+BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam) {
     // Pretend to use lParam to suppress unused parameter warning
     (void)lParam;
 
@@ -117,8 +114,7 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
     // Get executable path
     char exePath[MAX_PATH];
     DWORD size = MAX_PATH;
-    if (QueryFullProcessImageNameA(hProcess, 0, exePath, &size) == 0)
-    {
+    if (QueryFullProcessImageNameA(hProcess, 0, exePath, &size) == 0) {
         CloseHandle(hProcess);
         return TRUE;
     }
@@ -127,7 +123,8 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
     // Extract executable name from full path
     std::string fullPath = exePath;
     size_t lastSlash = fullPath.find_last_of("\\/");
-    std::string exeName = (lastSlash != std::string::npos) ? fullPath.substr(lastSlash + 1) : fullPath;
+    std::string exeName =
+        (lastSlash != std::string::npos) ? fullPath.substr(lastSlash + 1) : fullPath;
 
     // Convert to lowercase for case-insensitive comparison
     std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
@@ -138,17 +135,13 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
     bool shouldFlash = false;
 
     // Special cases
-    if (target == "all")
-    {
+    if (target == "all") {
         shouldFlash = true;
-    }
-    else if (target == "none" || target.empty())
-    {
+    } else if (target == "none" || target.empty()) {
         shouldFlash = false;
-    }
-    else
-    {
-        // Check if target matches executable name (with or without .exe extension)
+    } else {
+        // Check if target matches executable name (with or without .exe
+        // extension)
         std::string targetWithExt = target;
         if (target.find(".exe") == std::string::npos)
             targetWithExt += ".exe";
@@ -160,11 +153,11 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
             shouldFlash = true;
     }
 
-    if (shouldFlash)
-    {
+    if (shouldFlash) {
         char windowTitle[256];
         GetWindowTextA(hwnd, windowTitle, sizeof(windowTitle));
-        std::cout << "[DEBUG] Found target window: " << windowTitle << " (Process: " << exeName << ")" << std::endl;
+        std::cout << "[DEBUG] Found target window: " << windowTitle << " (Process: " << exeName
+                  << ")" << std::endl;
         FlashWindow(hwnd);
         return FALSE;
     }
@@ -172,34 +165,30 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam)
     return TRUE;
 }
 
-void FlashConfiguredWindows()
-{
+void FlashConfiguredWindows() {
     std::cout << "[DEBUG] Flashing '" << FLASH_WINDOW << "' windows..." << std::endl;
     EnumWindows(EnumWindowsCallback, 0);
 }
 
-bool LoadConfig()
-{
+bool LoadConfig() {
     std::ifstream promptFile("system_prompt.md");
-    if (promptFile.is_open())
-    {
+    if (promptFile.is_open()) {
         std::stringstream buffer;
         buffer << promptFile.rdbuf();
         SYSTEM_PROMPT = buffer.str();
-    }
-    else
-    {
+    } else {
         SYSTEM_PROMPT = "You are a helpful assistant.";
     }
     std::ifstream configFile("config.json");
-    if (!configFile.is_open())
-    {
+    if (!configFile.is_open()) {
         std::cout << "Creating default config.json..." << std::endl;
-        json defaultConfig = {
-            {"api_url", "http://localhost:8080/v1/chat/completions"},
-            {"api_key", ""},
-            {"ai", {{"model", "openai/gpt-3.5-turbo"}, {"fallback_models", json::array()}, {"providers", json::array()}}},
-            {"flash_window", "Chrome"}};
+        json defaultConfig = {{"api_url", "http://localhost:8080/v1/chat/completions"},
+                              {"api_key", ""},
+                              {"ai",
+                               {{"model", "openai/gpt-3.5-turbo"},
+                                {"fallback_models", json::array()},
+                                {"providers", json::array()}}},
+                              {"flash_window", "Chrome"}};
         std::ofstream outFile("config.json");
         if (outFile.is_open())
             outFile << defaultConfig.dump(2) << std::endl;
@@ -209,8 +198,7 @@ bool LoadConfig()
         FLASH_WINDOW = defaultConfig["flash_window"];
         return true;
     }
-    try
-    {
+    try {
         json config;
         configFile >> config;
         API_URL = config.value("api_url", "");
@@ -218,86 +206,74 @@ bool LoadConfig()
         FLASH_WINDOW = config.value("flash_window", "Chrome");
 
         // Parse ai section
-        if (!config.contains("ai"))
-        {
+        if (!config.contains("ai")) {
             std::cerr << "Error: config.json missing 'ai' section" << std::endl;
             return false;
         }
 
         json aiConfig = config["ai"];
-        if (!aiConfig.contains("model") || aiConfig["model"].get<std::string>().empty())
-        {
+        if (!aiConfig.contains("model") || aiConfig["model"].get<std::string>().empty()) {
             std::cerr << "Error: config.json missing 'ai.model'" << std::endl;
             return false;
         }
         MODEL = aiConfig["model"];
 
         // Parse fallback_models array (optional)
-        if (aiConfig.contains("fallback_models") && aiConfig["fallback_models"].is_array())
-        {
-            for (const auto &fallbackModel : aiConfig["fallback_models"])
-            {
+        if (aiConfig.contains("fallback_models") && aiConfig["fallback_models"].is_array()) {
+            for (const auto &fallbackModel : aiConfig["fallback_models"]) {
                 if (fallbackModel.is_string())
                     FALLBACK_MODELS.push_back(fallbackModel.get<std::string>());
             }
             if (!FALLBACK_MODELS.empty())
-                std::cout << "[DEBUG] Loaded " << FALLBACK_MODELS.size() << " fallback model(s)" << std::endl;
+                std::cout << "[DEBUG] Loaded " << FALLBACK_MODELS.size() << " fallback model(s)"
+                          << std::endl;
         }
 
         // Parse providers array (optional)
-        if (aiConfig.contains("providers") && aiConfig["providers"].is_array())
-        {
-            for (const auto &provider : aiConfig["providers"])
-            {
+        if (aiConfig.contains("providers") && aiConfig["providers"].is_array()) {
+            for (const auto &provider : aiConfig["providers"]) {
                 if (provider.is_string())
                     AI_PROVIDERS.push_back(provider.get<std::string>());
             }
             if (!AI_PROVIDERS.empty())
-                std::cout << "[DEBUG] Loaded " << AI_PROVIDERS.size() << " provider routing preference(s)" << std::endl;
+                std::cout << "[DEBUG] Loaded " << AI_PROVIDERS.size()
+                          << " provider routing preference(s)" << std::endl;
         }
 
-        if (API_URL.empty())
-        {
+        if (API_URL.empty()) {
             std::cerr << "Error: config.json missing 'api_url'" << std::endl;
             return false;
         }
         return true;
-    }
-    catch (const std::exception &e)
-    {
+    } catch (const std::exception &e) {
         std::cerr << "Config error: " << e.what() << std::endl;
         return false;
     }
 }
 
-void LoadStartupScripts()
-{
+void LoadStartupScripts() {
     std::cout << "[INFO] Loading startup scripts from js/startup/..." << std::endl;
 
     WIN32_FIND_DATAA findData;
     HANDLE hFind = FindFirstFileA("js\\startup\\*.js", &findData);
 
-    if (hFind == INVALID_HANDLE_VALUE)
-    {
-        std::cout << "[WARN] No startup scripts found in js/startup. Skipping loading." << std::endl;
+    if (hFind == INVALID_HANDLE_VALUE) {
+        std::cout << "[WARN] No startup scripts found in js/startup. Skipping "
+                     "loading."
+                  << std::endl;
         return;
     }
 
     int loaded = 0;
-    do
-    {
-        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        {
+    do {
+        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             std::string filePath = "js\\startup\\";
             filePath += findData.cFileName;
 
             std::cout << "[INFO] Loading: " << findData.cFileName << std::endl;
-            if (InjectJavaScript(filePath.c_str()))
-            {
+            if (InjectJavaScript(filePath.c_str())) {
                 loaded++;
-            }
-            else
-            {
+            } else {
                 std::cerr << "[ERROR] Failed to load: " << findData.cFileName << std::endl;
             }
         }
@@ -307,35 +283,29 @@ void LoadStartupScripts()
     std::cout << "[INFO] Loaded " << loaded << " startup script(s)" << std::endl;
 }
 
-size_t WriteCallback(void *contents, size_t size, size_t nmemb, std::string *userp)
-{
+size_t WriteCallback(void *contents, size_t size, size_t nmemb, std::string *userp) {
     size_t totalSize = size * nmemb;
     userp->append((char *)contents, totalSize);
     return totalSize;
 }
 
-std::string GetClipboardText()
-{
-    if (!OpenClipboard(nullptr))
-    {
+std::string GetClipboardText() {
+    if (!OpenClipboard(nullptr)) {
         std::cerr << "Failed to open clipboard" << std::endl;
         return "";
     }
     HANDLE hData = GetClipboardData(CF_UNICODETEXT);
-    if (hData == nullptr)
-    {
+    if (hData == nullptr) {
         CloseClipboard();
         return "";
     }
     wchar_t *pszText = static_cast<wchar_t *>(GlobalLock(hData));
-    if (pszText == nullptr)
-    {
+    if (pszText == nullptr) {
         CloseClipboard();
         return "";
     }
     int size = WideCharToMultiByte(CP_UTF8, 0, pszText, -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0)
-    {
+    if (size <= 0) {
         std::cerr << "[DEBUG] Failed to get clipboard text size" << std::endl;
         GlobalUnlock(hData);
         CloseClipboard();
@@ -348,24 +318,20 @@ std::string GetClipboardText()
     return result == 0 ? "" : text;
 }
 
-bool SetClipboardText(const std::string &text)
-{
-    if (!OpenClipboard(nullptr))
-    {
+bool SetClipboardText(const std::string &text) {
+    if (!OpenClipboard(nullptr)) {
         std::cerr << "Failed to open clipboard" << std::endl;
         return false;
     }
     EmptyClipboard();
     int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
     HGLOBAL hGlob = GlobalAlloc(GMEM_MOVEABLE, size * sizeof(wchar_t));
-    if (hGlob == nullptr)
-    {
+    if (hGlob == nullptr) {
         CloseClipboard();
         return false;
     }
     wchar_t *pszText = static_cast<wchar_t *>(GlobalLock(hGlob));
-    if (pszText == nullptr)
-    {
+    if (pszText == nullptr) {
         GlobalFree(hGlob);
         CloseClipboard();
         return false;
@@ -377,16 +343,14 @@ bool SetClipboardText(const std::string &text)
     return true;
 }
 
-void InitializeCurl()
-{
+void InitializeCurl() {
     std::lock_guard<std::mutex> curlLock(curlMutex);
 
     if (persistentCurl)
         return; // Already initialized
 
     persistentCurl = curl_easy_init();
-    if (!persistentCurl)
-    {
+    if (!persistentCurl) {
         std::cerr << "[ERROR] Failed to initialize CURL handle" << std::endl;
         return;
     }
@@ -396,7 +360,8 @@ void InitializeCurl()
     // Enable HTTP/2 if available (multiplexing, better performance)
     curl_easy_setopt(persistentCurl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
 
-    // Disable Nagle's algorithm for lower latency (send small packets immediately)
+    // Disable Nagle's algorithm for lower latency (send small packets
+    // immediately)
     curl_easy_setopt(persistentCurl, CURLOPT_TCP_NODELAY, 1L);
 
     // Enable connection reuse and pooling
@@ -426,12 +391,13 @@ void InitializeCurl()
        Currently implemented under MS-Windows. */
     curl_easy_setopt(persistentCurl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
 
-    std::cout << "[DEBUG] Initialized persistent CURL handle with low-latency optimizations" << std::endl;
+    std::cout << "[DEBUG] Initialized persistent CURL handle with low-latency "
+                 "optimizations"
+              << std::endl;
 }
 
 // Extract content between specified tags
-std::string ExtractTag(const std::string &text, const std::string &tag)
-{
+std::string ExtractTag(const std::string &text, const std::string &tag) {
     std::string openTag = "<" + tag + ">";
     std::string closeTag = "</" + tag + ">";
 
@@ -439,8 +405,7 @@ std::string ExtractTag(const std::string &text, const std::string &tag)
     size_t endPos = text.find(closeTag);
 
     // If both open and close tags are found, extract content between them
-    if (startPos != std::string::npos && endPos != std::string::npos && endPos > startPos)
-    {
+    if (startPos != std::string::npos && endPos != std::string::npos && endPos > startPos) {
         startPos += openTag.length();
         return text.substr(startPos, endPos - startPos);
     }
@@ -450,8 +415,7 @@ std::string ExtractTag(const std::string &text, const std::string &tag)
 }
 
 // Send text to OpenAI API
-std::string SendToAPI(const std::string &prompt)
-{
+std::string SendToAPI(const std::string &prompt) {
     std::lock_guard<std::mutex> curlLock(curlMutex);
 
     if (!persistentCurl)
@@ -464,8 +428,7 @@ std::string SendToAPI(const std::string &prompt)
     // Enable HTTP keep-alive
     headers = curl_slist_append(headers, "Connection: keep-alive");
 
-    if (!API_KEY.empty())
-    {
+    if (!API_KEY.empty()) {
         std::string authHeader = "Authorization: Bearer " + API_KEY;
         headers = curl_slist_append(headers, authHeader.c_str());
     }
@@ -478,25 +441,21 @@ std::string SendToAPI(const std::string &prompt)
         size_t historySize = chatHistory.size();
         // Keep last 20 messages (10 conversation pairs: user + assistant)
         size_t start = (historySize > 20) ? (historySize - 20) : 0;
-        std::cout << "[DEBUG] Chat history size: " << historySize << " messages, using last " << (historySize - start) << " messages" << std::endl;
+        std::cout << "[DEBUG] Chat history size: " << historySize << " messages, using last "
+                  << (historySize - start) << " messages" << std::endl;
         for (size_t i = start; i < historySize; ++i)
             messages.push_back(chatHistory[i]);
     }
     messages.push_back({{"role", "user"}, {"content", prompt}});
 
     // Build payload with optional provider routing and model fallbacks
-    json payload = {
-        {"model", MODEL},
-        {"messages", messages},
-        {"temperature", 0.7}};
+    json payload = {{"model", MODEL}, {"messages", messages}, {"temperature", 0.7}};
 
     // Add model fallbacks if specified (for OpenRouter automatic failover)
-    if (!FALLBACK_MODELS.empty())
-    {
+    if (!FALLBACK_MODELS.empty()) {
         // Build fallback models array
         json modelsArray = json::array();
-        for (const auto &fallbackModel : FALLBACK_MODELS)
-        {
+        for (const auto &fallbackModel : FALLBACK_MODELS) {
             modelsArray.push_back(fallbackModel);
         }
         payload["models"] = modelsArray;
@@ -504,12 +463,10 @@ std::string SendToAPI(const std::string &prompt)
     }
 
     // Add provider routing if providers are specified (for OpenRouter)
-    if (!AI_PROVIDERS.empty())
-    {
-        payload["provider"] = {
-            {"order", AI_PROVIDERS},
-            {"allow_fallbacks", true}};
-        std::cout << "[DEBUG] Including provider routing: " << json(AI_PROVIDERS).dump() << std::endl;
+    if (!AI_PROVIDERS.empty()) {
+        payload["provider"] = {{"order", AI_PROVIDERS}, {"allow_fallbacks", true}};
+        std::cout << "[DEBUG] Including provider routing: " << json(AI_PROVIDERS).dump()
+                  << std::endl;
     }
 
     std::string jsonStr = payload.dump();
@@ -530,8 +487,7 @@ std::string SendToAPI(const std::string &prompt)
 
     // Don't cleanup the persistent handle - it will be reused
 
-    if (res != CURLE_OK)
-    {
+    if (res != CURLE_OK) {
         if (res == CURLE_OPERATION_TIMEDOUT)
             return "Error: Request timed out.";
         if (res == CURLE_COULDNT_CONNECT)
@@ -540,11 +496,9 @@ std::string SendToAPI(const std::string &prompt)
             return "Error: Could not resolve host.";
         return std::string("Error: ") + curl_easy_strerror(res);
     }
-    try
-    {
+    try {
         json responseJson = json::parse(responseString);
-        if (responseJson.contains("choices") && !responseJson["choices"].empty())
-        {
+        if (responseJson.contains("choices") && !responseJson["choices"].empty()) {
             std::string content = responseJson["choices"][0]["message"]["content"];
             // Assume the answer is wrapped in <answer> tags
             // User should specify this in the system prompt
@@ -553,15 +507,13 @@ std::string SendToAPI(const std::string &prompt)
                 std::lock_guard<std::mutex> lock(historyMutex);
                 chatHistory.push_back({{"role", "user"}, {"content", prompt}});
                 chatHistory.push_back({{"role", "assistant"}, {"content", content}});
-                std::cout << "[DEBUG] Added conversation to history. Total messages: " << chatHistory.size() << std::endl;
+                std::cout << "[DEBUG] Added conversation to history. Total messages: "
+                          << chatHistory.size() << std::endl;
             }
             return finalAnswer;
-        }
-        else if (responseJson.contains("error"))
+        } else if (responseJson.contains("error"))
             return "API Error: " + responseJson["error"]["message"].get<std::string>();
-    }
-    catch (const std::exception &e)
-    {
+    } catch (const std::exception &e) {
         std::cout << "[DEBUG] Full API response: " << responseString << std::endl;
         return "Error parsing response: " + std::string(e.what());
     }
@@ -569,41 +521,33 @@ std::string SendToAPI(const std::string &prompt)
     return "Error: Unexpected response format";
 }
 
-LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
-{
+LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode < 0 || wParam != WM_KEYDOWN)
         return CallNextHookEx(hKeyboardHook, nCode, wParam, lParam);
     DWORD vk = ((KBDLLHOOKSTRUCT *)lParam)->vkCode;
-    switch (vk)
-    {
+    switch (vk) {
     case VK_F4:
         std::cout << "F4 pressed - Reconnecting to CDP and refreshing scripts..." << std::endl;
-        if (ReconnectCDP())
-        {
+        if (ReconnectCDP()) {
             std::cout << "[CDP] Reconnected to new target" << std::endl;
             LoadStartupScripts(); // Reinject all startup scripts
             std::cout << "CDP scripts refreshed." << std::endl;
             ShowOverlayIndicator(1000, IndicatorColor::Green);
-        }
-        else
-        {
+        } else {
             std::cout << "[CDP] Failed to connect" << std::endl;
             ShowOverlayIndicator(1000, IndicatorColor::Red);
         }
         break;
-    case VK_F6:
-    {
+    case VK_F6: {
         std::lock_guard<std::mutex> lock(historyMutex);
         chatHistory.clear();
         std::cout << "Chat history cleared." << std::endl;
         break;
     }
-    case VK_F7:
-    {
+    case VK_F7: {
         std::cout << "F7 pressed - Processing..." << std::endl;
         std::string clipboardText = GetClipboardText();
-        if (clipboardText.empty())
-        {
+        if (clipboardText.empty()) {
             std::cout << "Clipboard empty." << std::endl;
             break;
         }
@@ -611,82 +555,69 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         ShowOverlayIndicator(700, IndicatorColor::Green);
 
         // Launch thread for API request
-        std::thread([clipboardText]()
-                    {
+        std::thread([clipboardText]() {
             activeThreads++;
-            try
-            {
+            try {
                 std::string response = SendToAPI(clipboardText);
 
                 // Add response to queue
                 {
                     std::lock_guard<std::mutex> lock(responseMutex);
                     responseQueue.push(response);
-                    std::cout << "Response queued. Press F8 to copy ("
-                    << responseQueue.size() << " pending)." << std::endl;
+                    std::cout << "Response queued. Press F8 to copy (" << responseQueue.size()
+                              << " pending)." << std::endl;
                 }
-                
+
                 // Show green indicator with first character of response
-                const char* firstChar = response.empty() ? nullptr : response.c_str();
+                const char *firstChar = response.empty() ? nullptr : response.c_str();
                 ShowOverlayIndicator(3000, IndicatorColor::Green, firstChar);
                 FlashConfiguredWindows();
+            } catch (...) {
+                std::cerr << "Error in API thread." << std::endl;
             }
-            catch (...) { std::cerr << "Error in API thread." << std::endl; }
-            activeThreads--; })
-            .detach();
+            activeThreads--;
+        }).detach();
         break;
     }
-    case VK_F8:
-    {
+    case VK_F8: {
         std::lock_guard<std::mutex> lock(responseMutex);
-        if (!responseQueue.empty())
-        {
+        if (!responseQueue.empty()) {
             std::string response = responseQueue.front();
             responseQueue.pop();
 
-            std::cout << "Popped oldest response from queue. " << responseQueue.size() << " response(s) remaining" << std::endl;
+            std::cout << "Popped oldest response from queue. " << responseQueue.size()
+                      << " response(s) remaining" << std::endl;
 
-            if (SetClipboardText(response))
-            {
+            if (SetClipboardText(response)) {
                 std::cout << "Clipboard updated." << std::endl;
                 // Show green indicator on successful clipboard update
                 const char *firstChar = response.empty() ? nullptr : response.c_str();
                 ShowOverlayIndicator(1000, IndicatorColor::Green, firstChar);
-            }
-            else
-            {
+            } else {
                 std::cout << "Failed to update clipboard." << std::endl;
             }
-        }
-        else
-        {
+        } else {
             std::cout << "No response available." << std::endl;
             // Show red indicator when no response is available
             ShowOverlayIndicator(1000, IndicatorColor::Red);
         }
         break;
     }
-    case VK_F5:
-    {
+    case VK_F5: {
         std::cout << "F5 pressed - Reloading browser AI sessions config..." << std::endl;
-        if (SessionStart("config.json"))
-        {
+        if (SessionStart("config.json")) {
             std::cout << "Browser AI config reloaded successfully." << std::endl;
             ShowOverlayIndicator(1000, IndicatorColor::Green);
-        }
-        else
-        {
+        } else {
             std::cout << "Failed to reload browser AI config." << std::endl;
             ShowOverlayIndicator(1000, IndicatorColor::Red);
         }
         break;
     }
-    case VK_F10:
-    {
+    case VK_F10: {
         std::cout << "F10 pressed - Sending to ChatGPT session..." << std::endl;
         std::string clipboardText = GetClipboardText();
-        if (clipboardText.empty())
-        {
+        if (clipboardText.empty()) {
             std::cout << "Clipboard empty." << std::endl;
             break;
         }
@@ -694,39 +625,37 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         ShowOverlayIndicator(700, IndicatorColor::Green);
 
         // Launch thread for session request
-        std::thread([clipboardText]()
-                    {
+        std::thread([clipboardText]() {
             activeThreads++;
-            try
-            {
+            try {
                 const int BUFFER_SIZE = 51200;
-                char* resultBuffer = new char[BUFFER_SIZE];
-                
-                if (SessionSend("chatgpt", clipboardText.c_str(), resultBuffer, BUFFER_SIZE, "answer")) {
+                char *resultBuffer = new char[BUFFER_SIZE];
+
+                if (SessionSend("chatgpt", clipboardText.c_str(), resultBuffer, BUFFER_SIZE,
+                                "answer")) {
                     std::string response(resultBuffer);
-                    
+
                     {
                         std::lock_guard<std::mutex> lock(responseMutex);
                         responseQueue.push(response);
                         std::cout << "ChatGPT response queued. Press F8 to copy ("
-                        << responseQueue.size() << " pending)." << std::endl;
+                                  << responseQueue.size() << " pending)." << std::endl;
                     }
-                    
+
                     ShowOverlayIndicator(3000, IndicatorColor::Green);
                     FlashConfiguredWindows();
                 } else {
                     std::cerr << "Failed to get ChatGPT response" << std::endl;
                     ShowOverlayIndicator(2000, IndicatorColor::Red);
                 }
-                
+
                 delete[] resultBuffer;
-            }
-            catch (...) { 
+            } catch (...) {
                 std::cerr << "Error in session thread." << std::endl;
                 ShowOverlayIndicator(2000, IndicatorColor::Red);
             }
-            activeThreads--; })
-            .detach();
+            activeThreads--;
+        }).detach();
         break;
     }
     // Use F12 to quit the application to prevent accidental closure
@@ -738,52 +667,43 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
     return CallNextHookEx(hKeyboardHook, nCode, wParam, lParam);
 }
 
-class ConsoleStreamBuf : public std::streambuf
-{
+class ConsoleStreamBuf : public std::streambuf {
     HANDLE hConsole;
 
-public:
+  public:
     ConsoleStreamBuf(HANDLE h) : hConsole(h) {}
 
-protected:
-    virtual int_type overflow(int_type c) override
-    {
-        if (c != EOF)
-        {
+  protected:
+    virtual int_type overflow(int_type c) override {
+        if (c != EOF) {
             char ch = static_cast<char>(c);
             DWORD written;
             WriteConsoleA(hConsole, &ch, 1, &written, NULL);
         }
         return c;
     }
-    virtual std::streamsize xsputn(const char *s, std::streamsize n) override
-    {
+    virtual std::streamsize xsputn(const char *s, std::streamsize n) override {
         DWORD written;
         WriteConsoleA(hConsole, s, static_cast<DWORD>(n), &written, NULL);
         return n;
     }
 };
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     bool debugMode = false;
-    for (int i = 1; i < argc; i++)
-    {
-        if (std::string(argv[i]) == "--debug")
-        {
+    for (int i = 1; i < argc; i++) {
+        if (std::string(argv[i]) == "--debug") {
             debugMode = true;
             break;
         }
     }
-    if (debugMode)
-    {
-        if (AllocConsole())
-        {
+    if (debugMode) {
+        if (AllocConsole()) {
             SetConsoleOutputCP(CP_UTF8);
             SetConsoleCP(CP_UTF8);
-            HANDLE hConOut = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-            if (hConOut != INVALID_HANDLE_VALUE)
-            {
+            HANDLE hConOut = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE,
+                                         NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (hConOut != INVALID_HANDLE_VALUE) {
                 static ConsoleStreamBuf consoleBuf(hConOut);
                 std::cout.rdbuf(&consoleBuf);
                 std::cerr.rdbuf(&consoleBuf);
@@ -796,7 +716,9 @@ int main(int argc, char *argv[])
                     freopen("/dev/console", "r", stdin);
                 setvbuf(stdout, NULL, _IONBF, 0);
                 setvbuf(stderr, NULL, _IONBF, 0);
-                std::cout << "[DEBUG] Console allocated and streams redirected via custom buffer." << std::endl;
+                std::cout << "[DEBUG] Console allocated and streams redirected "
+                             "via custom buffer."
+                          << std::endl;
             }
         }
     }
@@ -805,8 +727,7 @@ int main(int argc, char *argv[])
         SetConsoleCtrlHandler(ConsoleHandler, TRUE);
     std::cout << "=== Suterusu ===" << std::endl;
     std::cout << "Loading configuration from config.json..." << std::endl;
-    if (!LoadConfig())
-    {
+    if (!LoadConfig()) {
         std::cerr << "Failed to load configuration. Exiting." << std::endl;
         return 1;
     }
@@ -815,22 +736,18 @@ int main(int argc, char *argv[])
     std::cout << "Configuration loaded successfully:" << std::endl;
     std::cout << "  API URL: " << API_URL << std::endl;
     std::cout << "  Model: " << MODEL << std::endl;
-    if (!FALLBACK_MODELS.empty())
-    {
+    if (!FALLBACK_MODELS.empty()) {
         std::cout << "  Fallback Models: ";
-        for (size_t i = 0; i < FALLBACK_MODELS.size(); ++i)
-        {
+        for (size_t i = 0; i < FALLBACK_MODELS.size(); ++i) {
             std::cout << FALLBACK_MODELS[i];
             if (i < FALLBACK_MODELS.size() - 1)
                 std::cout << ", ";
         }
         std::cout << std::endl;
     }
-    if (!AI_PROVIDERS.empty())
-    {
+    if (!AI_PROVIDERS.empty()) {
         std::cout << "  Providers: ";
-        for (size_t i = 0; i < AI_PROVIDERS.size(); ++i)
-        {
+        for (size_t i = 0; i < AI_PROVIDERS.size(); ++i) {
             std::cout << AI_PROVIDERS[i];
             if (i < AI_PROVIDERS.size() - 1)
                 std::cout << ", ";
@@ -838,7 +755,11 @@ int main(int argc, char *argv[])
         std::cout << std::endl;
     }
     std::cout << "  API Key: " << (API_KEY.empty() ? "(not set)" : "********") << std::endl;
-    std::cout << "  System Prompt: " << (SYSTEM_PROMPT.empty() ? "(default)" : SYSTEM_PROMPT.substr(0, 50) + (SYSTEM_PROMPT.length() > 50 ? "..." : "")) << std::endl;
+    std::cout << "  System Prompt: "
+              << (SYSTEM_PROMPT.empty()
+                      ? "(default)"
+                      : SYSTEM_PROMPT.substr(0, 50) + (SYSTEM_PROMPT.length() > 50 ? "..." : ""))
+              << std::endl;
     std::cout << "  Flash Window: " << FLASH_WINDOW << std::endl;
     std::cout << std::endl;
     std::cout << "Controls:" << std::endl;
@@ -847,8 +768,12 @@ int main(int argc, char *argv[])
     std::cout << "  F6 - Clear chat history" << std::endl;
     std::cout << "  F7 - Read clipboard and send to API" << std::endl;
     std::cout << "  F8 - Replace clipboard with API response" << std::endl;
-    std::cout << "  F9 - Toggle text selection (handled by JavaScript not keyboard hook)" << std::endl;
-    std::cout << "  F10 - Send clipboard to browser AI session (e.g., ChatGPT) *EXPERIMENTAL*" << std::endl;
+    std::cout << "  F9 - Toggle text selection (handled by JavaScript not "
+                 "keyboard hook)"
+              << std::endl;
+    std::cout << "  F10 - Send clipboard to browser AI session (e.g., ChatGPT) "
+                 "*EXPERIMENTAL*"
+              << std::endl;
     std::cout << "  F12 - Quit application" << std::endl;
     std::cout << std::endl;
     std::cout << "Note: Additional hotkeys may be defined in userscripts" << std::endl;
@@ -860,12 +785,9 @@ int main(int argc, char *argv[])
 
     // Initialize CDP connection FIRST (before loading scripts)
     std::cout << "Initializing Chrome DevTools connection..." << std::endl;
-    if (InitializeCDP())
-    {
+    if (InitializeCDP()) {
         std::cout << "[CDP] Connection established - ready for script injection" << std::endl;
-    }
-    else
-    {
+    } else {
         std::cout << "[CDP] Warning: Connection failed - will retry when needed" << std::endl;
     }
 
@@ -881,20 +803,16 @@ int main(int argc, char *argv[])
     std::cout.flush();
 
     hKeyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, nullptr, 0);
-    if (hKeyboardHook == nullptr)
-    {
+    if (hKeyboardHook == nullptr) {
         std::cerr << "Failed to install keyboard hook!" << std::endl;
         curl_global_cleanup();
         return 1;
     }
     std::cout << "[DEBUG] Keyboard hook installed successfully" << std::endl;
     MSG msg;
-    while (programRunning)
-    {
-        while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
-        {
-            if (msg.message == WM_QUIT)
-            {
+    while (programRunning) {
+        while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) {
                 programRunning = false;
                 break;
             }
@@ -905,7 +823,8 @@ int main(int argc, char *argv[])
     }
 
     // Wait for all API threads to complete
-    std::cout << "[DEBUG] Waiting for " << activeThreads.load() << " active thread(s) to finish..." << std::endl;
+    std::cout << "[DEBUG] Waiting for " << activeThreads.load() << " active thread(s) to finish..."
+              << std::endl;
     while (activeThreads > 0)
         Sleep(100);
     UnhookWindowsHookEx(hKeyboardHook);
@@ -915,8 +834,7 @@ int main(int argc, char *argv[])
     SessionsShutdownAll();
 
     // Clean up persistent CURL handle
-    if (persistentCurl)
-    {
+    if (persistentCurl) {
         curl_easy_cleanup(persistentCurl);
         persistentCurl = nullptr;
     }

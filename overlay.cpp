@@ -1,9 +1,9 @@
 #include "overlay.h"
-#include <windows.h>
-#include <thread>
 #include <chrono>
 #include <cmath>
 #include <string>
+#include <thread>
+#include <windows.h>
 
 // Small, subtle circular indicator placed in bottom-right corner.
 // while remaining difficult for nearby people to notice. (MOST IMPORTANT FOR CHEETING)
@@ -12,14 +12,11 @@ static const char *OVERLAY_CLASS = "SuterusuBottomRightOverlayClass";
 static COLORREF g_currentColor = RGB(40, 200, 120); // Default green
 static const char *g_overlayText = nullptr;
 
-LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    switch (msg)
-    {
+LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
     case WM_ERASEBKGND:
         return 1; // Don't erase background
-    case WM_PAINT:
-    {
+    case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
         RECT rc;
@@ -49,9 +46,9 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         if (g_overlayText && g_overlayText[0] != '\0') {
             SetBkMode(memDC, TRANSPARENT);
             SetTextColor(memDC, RGB(255, 255, 255)); // White text
-            HFONT hFont = CreateFontA(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                                      DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                      CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial");
+            HFONT hFont = CreateFontA(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                                      DEFAULT_PITCH | FF_DONTCARE, "Arial");
             HFONT hOldFont = (HFONT)SelectObject(memDC, hFont);
 
             // Position text to the right of the circle
@@ -87,8 +84,7 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     }
 }
 
-void CreateAndShowOverlay(int duration_ms, IndicatorColor color, const char* text)
-{
+void CreateAndShowOverlay(int duration_ms, IndicatorColor color, const char *text) {
     g_overlayText = text;
 
     // Set the color based on parameter
@@ -113,10 +109,10 @@ void CreateAndShowOverlay(int duration_ms, IndicatorColor color, const char* tex
 
     // Very small size for discreet indicator
     const int circleSize = 18; // compact size
-    const int padding = 12; // padding from screen edges
+    const int padding = 12;    // padding from screen edges
 
     // If text is present, make window wider to accommodate text beside circle
-    int width = text ? (circleSize + 25) : circleSize;  // 25px for character + gap
+    int width = text ? (circleSize + 25) : circleSize; // 25px for character + gap
     int height = circleSize;
 
     // Position in bottom-right corner
@@ -126,15 +122,11 @@ void CreateAndShowOverlay(int duration_ms, IndicatorColor color, const char* tex
     int y = screenH - height - padding;
 
     // Create window with extended styles for always-on-top, no taskbar, layered
-    HWND hwnd = CreateWindowExA(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
-        OVERLAY_CLASS, NULL, WS_POPUP,
-        x, y, width, height,
-        NULL, NULL, hInst, NULL
-    );
+    HWND hwnd = CreateWindowExA(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
+                                OVERLAY_CLASS, NULL, WS_POPUP, x, y, width, height, NULL, NULL,
+                                hInst, NULL);
 
-    if (!hwnd)
-    {
+    if (!hwnd) {
         UnregisterClassA(OVERLAY_CLASS, hInst);
         return;
     }
@@ -153,10 +145,10 @@ void CreateAndShowOverlay(int duration_ms, IndicatorColor color, const char* tex
     auto startTime = std::chrono::steady_clock::now();
     const int pulseInterval = 50; // ms between alpha updates
 
-    while (true)
-    {
+    while (true) {
         auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
+        auto elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
 
         if (elapsed >= duration_ms)
             break;
@@ -175,13 +167,13 @@ void CreateAndShowOverlay(int duration_ms, IndicatorColor color, const char* tex
     UnregisterClassA(OVERLAY_CLASS, hInst);
 }
 
-void ShowOverlayIndicator(int duration_ms, IndicatorColor color, const char* text)
-{
+void ShowOverlayIndicator(int duration_ms, IndicatorColor color, const char *text) {
     // Run overlay on a detached thread so caller is non-blocking
-    std::string copyText(text ? text : ""); // Enforce a deep copy of text to avoid dangling pointer
-                                            // I shouldn't use raw pointer in the first place but too late now
+    std::string copyText(text ? text : ""); // Enforce a deep copy of text to avoid dangling
+                                            // pointer I shouldn't use raw pointer in the first
+                                            // place but too late now
     std::thread t([duration_ms, color, copyText]() {
         CreateAndShowOverlay(duration_ms, color, copyText.c_str());
     });
-        t.detach();
+    t.detach();
 }
