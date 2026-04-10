@@ -29,6 +29,9 @@ sources = files('main.cpp', 'overlay.cpp')
 browser_injector_lib = shared_library(
   'browser_injector',
   'browser_injector.cpp',
+  'cdp_connection.cpp',
+  'browser_session.cpp',
+  'browser_manager.cpp',
   dependencies: [boost_dep, nlohmann_json_dep, windows_libs],
   install_dir: meson.current_source_dir() + '/bin',
   install: true

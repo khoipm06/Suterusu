@@ -28,31 +28,6 @@ Keybinds:
 
 Scripts in `js/startup/` are automatically injected into the browser on launch.
 
-### Creating Custom Scripts
-
-Place `.js` files in `js/startup/` folder. They will be automatically loaded.
-
-Example script with keyboard shortcut:
-```javascript
-(function() {
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'F10') {  // Your custom hotkey
-            e.preventDefault();
-            // Your code here
-            console.log('[Suterusu] Custom action triggered');
-        }
-    });
-    
-    console.log('[Suterusu] Custom script loaded');
-})();
-```
-
-**Tips:**
-- Use `console.log('[Suterusu] ...')` for debugging
-- Wrap code in IIFE `(function(){ ... })()` to avoid global scope pollution
-- Use `e.preventDefault()` to prevent browser default behavior
-- Scripts persist across page navigation via CDP
-
 ## Installation
 
 TODO

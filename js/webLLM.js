@@ -6,8 +6,6 @@ window.askLLM = async function (promptText, platform = null) {
     else if (host.includes('gemini.google.com')) platform = 'gemini';
     else if (host.includes('claude.ai')) platform = 'claude';
     else if (host.includes('grok.com')) platform = 'grok';
-    else if (host.includes('perplexity.ai')) platform = 'perplexity';
-    else if (host.includes('meta.ai')) platform = 'meta-ai';
     else throw new Error("Platform could not be auto-detected from URL");
   }
 
