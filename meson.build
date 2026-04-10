@@ -23,15 +23,25 @@ if host_machine.system() == 'windows'
 endif
 
 # Source files
-sources = files('main.cpp', 'overlay.cpp', 'config_manager.cpp', 'sys_utils.cpp', 'api_client.cpp', 'app_process.cpp')
+inc = include_directories('src/app', 'src/injector')
+
+sources = files(
+  'src/app/main.cpp', 
+  'src/app/overlay.cpp', 
+  'src/app/config_manager.cpp', 
+  'src/app/sys_utils.cpp', 
+  'src/app/api_client.cpp', 
+  'src/app/app_process.cpp'
+)
 
 # Build CDP injector as shared library
 browser_injector_lib = shared_library(
   'browser_injector',
-  'browser_injector.cpp',
-  'cdp_connection.cpp',
-  'browser_session.cpp',
-  'browser_manager.cpp',
+  'src/injector/browser_injector.cpp',
+  'src/injector/cdp_connection.cpp',
+  'src/injector/browser_session.cpp',
+  'src/injector/browser_manager.cpp',
+  include_directories: inc,
   dependencies: [boost_dep, nlohmann_json_dep, windows_libs],
   install_dir: meson.current_source_dir() + '/bin',
   install: true
@@ -41,7 +51,8 @@ browser_injector_lib = shared_library(
 executable(
   'suterusu',
   sources,
-  dependencies: [curl_dep, nlohmann_json_dep],
+  dependencies: [curl_dep, nlohmann_json_dep, boost_dep, windows_libs],
+  include_directories: inc,
   link_with: browser_injector_lib,
   win_subsystem: 'windows',  # Hide console by default (use --debug to show)
   install_dir: meson.current_source_dir() + '/bin',

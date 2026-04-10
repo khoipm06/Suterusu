@@ -259,8 +259,6 @@ bool CDPConnection::InjectScript(const std::string &script_path) {
             return false;
         }
 
-        std::cout << "[CDP:" << debug_port << "] RAW InjectScript response: " << response << "\n";
-
         auto resp_json = json::parse(response);
         if (resp_json.contains("result") && resp_json["result"].contains("exceptionDetails")) {
             std::cerr << "[CDP:" << debug_port << "] JS Injection error in " << script_path << " :\n" 
