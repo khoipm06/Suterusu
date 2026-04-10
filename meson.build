@@ -23,7 +23,7 @@ if host_machine.system() == 'windows'
 endif
 
 # Source files
-sources = files('main.cpp', 'overlay.cpp')
+sources = files('main.cpp', 'overlay.cpp', 'config_manager.cpp', 'sys_utils.cpp', 'api_client.cpp', 'app_process.cpp')
 
 # Build CDP injector as shared library
 browser_injector_lib = shared_library(
